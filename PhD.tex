@@ -1,0 +1,356 @@
+\documentclass[11pt,letter]{article}
+\usepackage{graphicx,amscd,amsmath,amssymb,amsfonts,verbatim}
+%\usepackage{geometry}
+\usepackage{mathrsfs}
+\usepackage{bbm}
+\usepackage[all]{xy}
+\usepackage{mathtools}
+\DeclarePairedDelimiter\ceil{\lceil}{\rceil}
+\DeclarePairedDelimiter\floor{\lfloor}{\rfloor}
+\usepackage{natbib}
+\usepackage{authblk}
+\usepackage{multirow}
+\usepackage{enumitem}
+\usepackage{tikz}
+\usepackage{tkz-euclide}
+\usepackage{fancyhdr}
+\usepackage{hyperref}
+\usepackage{lastpage}
+\usepackage{pdflscape}
+\graphicspath{{Images/}}
+
+
+\DeclareMathAlphabet{\mathpzc}{OT1}{pzc}{m}{it}
+\pagestyle{empty}
+
+
+\renewcommand{\headrulewidth}{0.0pt}
+\renewcommand{\footrulewidth}{0.0pt}
+
+\setlength{\textheight}{9.00in}
+\setlength{\textwidth}{7.00in}
+\setlength{\topmargin}{-0.5in}
+\setlength{\evensidemargin}{-0.25in}
+\setlength{\oddsidemargin}{-0.25in}
+
+\renewcommand{\baselinestretch}{1.2}
+
+\makeatletter
+
+\makeatother
+\lfoot{} \cfoot{ } \rfoot{{\small{\em Page \thepage \ of \pageref{LastPage}}}}
+
+\begin{document}
+\pagestyle{fancy}
+
+\title{Description of the estimation method for my third-year paper}
+\author{Raphaël Langevin}
+
+\affil{Department of Economics, \\ McGill University}
+
+\maketitle
+
+\section{Introduction}
+This document broadly describes the estimation strategy I will use for my third-year paper and some other developments. This document is a working document and is not final at all. All comments are welcome. And I bear responsibility for all remaining typos and potential mistakes.
+\subsection{Objective of the third-year paper}
+The objective of the third-year paper is to develop a consistent estimation framework for parametric finite mixtures, compare this framework to other estimation methods currently used in the literature, and finally apply this method to administrative healthcare data so to estimate individual healthcare trajectories.
+\subsection{General framework}
+The general framework of the model can be described by the following equation~:
+\begin{align}\label{eqn:1}
+f(y_{it}) &= f(y_{it}|x_{it},\Theta,Z_{itg}=1) = f_g(y_{it}|x_{it},\theta_g)
+\end{align}
+where $y_{it}$ is the observed outcome(s) attributed to the $i^{th}$ individual at the $t^{th}$ period, with $i=(1,...,N)$ and $t=(1,...,T)$, $f$ is a continuous or discrete parametric distribution that is unknown to the econometrician, $f_g$ is the distribution that's associated with the $g^{th}$ component, $x_{it}$ is a $p \times 1$ vector of strictly exogenous time-varying and time-constant covariates,\footnote{The strict exogeneity assumption will be relaxed later on.} The matrix $\Theta = (\theta_1,...,\theta_G)$ is a $m \times G$ matrix of parameters to estimate that lies within the parameter space $\Omega$, and $Z_{itg}$ is a binary indicator variable that equals one if the $it^{th}$ observation has arisen from the $g^{th}$ component of the mixture distribution and zero otherwise. We also define the categorical random variable $Z_{it}$ that equals $g$ if the $it^{th}$ observation has arisen from the $g^{th}$ component. The total number of components in the mixture is equal to $G$ and is assumed to be known throughout the document. It is worth noting that the outcome variable $y_{it}$ is a scalar (so $f$ is univariate), but the extension to multivariate outcomes will be considered in further work.
+\par
+Usually, the random variable $Z$ is defined as a latent variable which is unobserved to the econometrician. This variable completely determines which column from $\Theta$ actually generated the outcome variable. Assuming a functional form for each distribution $f_g$, the matrix of parameters $\Theta$ can be parametrically identified using iterative algorithms such as the expectation-maximization (EM) algorithm, which is described below.\footnote{Other (non-)iterative algorithms also exist, but they are much less used and less computationally efficient than the EM algorithm.}
+\par
+In the context of medical resource consumption, $Z_{itg}$ may be considered as a binary indicator for the general health state of the $i^{th}$ individual at the $t^{th}$ period. As a result, this underlying health state is unobserved by the econometrician and determines the structural parameters of the relationship between the individual and its medical resource consumption for a given time period. It is important to emphasize that such a framework does not assume any restriction on the behavior of the latent variable over time. However, it is generally assumed that this latent variable is a first-order Markov chain, which means that
+\begin{align*}
+\mathbb{P}[Z_{it} = j|Z_{it-1}=l,...,Z_{i0}=k] = \mathbb{P}[Z_{it} = j|Z_{it-1}=l] = P_{lj}.
+\end{align*}
+All models imposing such a restriction are called Hidden Markov Models (HMMs) since the behavior of the latent (hidden) variable follows a Markov process \citep{altman_mixed_2007,cappe_inference_2005}. Hence, the transition matrix $P$ entirely describes the dynamic behavior of the latent variable and can also be augmented to include contemporaneous and past strict exogenous covariates by specifying a functional form for each element of the transition matrix \citep{luo_bayesian_2021,hyppolite_alternative_2017}. Parameters in HMMs are usually estimated with the EM algorithm or Markov Chain Monte Carlo methods using whether a frequentist or a Bayesian approach, respectively \citep{luo_bayesian_2021}. Finite mixture models are generally more conservative by generally not assuming any formal specification for the distribution of the latent variable\footnote{Apart from the fact that the various realization of the $Z$ variable may be described by a multinomial distribution with each probability being equal to its corresponding mixing proportion in the population, which does not add any potentially harmful restriction to the estimation procedure. More on this later.}. It is shown below why such an approach is generally required to achieve consistency. One objective of my third-year paper is to compare my estimation framework to standard HMMs with both simulated and real-world data.
+\section{The EM algorithm}
+This section give a detailed description of the EM algorithm while formally showing its main caveats. The next section will also compare the EM algorithm to the algorithm that I will use in the context of my third-year paper.
+\par
+The joint density of the mixture distribution is described in equation (\ref{eqn:1}) where bold letters represent the matrix notation of the variables described in the previous section. Hence, $\mathbf{y} = (y_1,...,y_N)'$ is a $NT$-size column-vector of outcome values, $\mathbf{x} = (x_1,...,x_N)'$ is a $NT \times p$ matrix of strictly exogenous covariates.
+\begin{align}\label{eqn:2}
+f(\mathbf{y}|\mathbf{x},\Theta) = \prod_{i=1}^N \prod_{t=1}^T \sum_{g=1}^G \pi_g f_g(y_{it}|x_{it},\theta_g).
+\end{align} 
+\par
+The mixing proportion $\pi_g$ corresponds to the fraction of observations that is assigned to the $g^{th}$ group. Assuming the true membership $Z_{itg}$ is known for all observations, the mixing proportion could be estimated using
+\begin{align} \label{eqn:3}
+\hat{\pi}_g &= \frac{\sum_{i=1}^N\sum_{t=1}^T Z_{itg}}{NT}.
+\end{align}
+Given that $Z_{itg}$ is never truly observed, one needs to replace it by its estimated counterpart, which is known as the posterior probability \citep{mclachlan_finite_2019}~:
+\begin{align} \label{eqn:4}
+\mathbb{E}[\hat{Z}_{itg}|\Theta] = \tau_{g}(y_{it}|x_{it},\Theta) = \mathbb{P}[Z_{itg}=1|y_{it},x_{it},\Theta] = \frac{\pi_g f_g(y_{it}|x_{it},\theta_g)}{\sum_{g=1}^G \pi_g f_g(y_{it}|x_{it},\theta_g)}.
+\end{align}
+The posterior probability is equal to the probability that the $it^{th}$ observation has arisen from the $g^{th}$ component conditional on the observed data and the parameter values.
+\par
+One important thing to note here is that the posterior probability $\tau_{g}(y_{it}|x_{it},\Theta)$ also depends on the mixing proportions $\pi_g$, which are based upon the estimated posterior probability. To solve this loophole issue, let's define the superscript ${(k)}$ as the values obtained after the $k^{th}$ iteration of the EM algorithm. Hence, if we use $\hat{\pi}_g^{(k-1)}$ to estimate $\hat{\pi}_g^{(k)}$ in equation (\ref{eqn:3}), we get the following equation~:
+\begin{align} \label{eqn:5}
+\hat{\pi}^{(k)}_g &= \frac{\sum_{i=1}^N\sum_{t=1}^T  \hat{\tau}^{(k-1)}_{g}(y_{it}|x_{it},\hat{\Theta}^{(k-1)}) }{NT},
+\end{align}
+where all parameters that are estimated now share the "hat" notation to emphasize the fact that those are estimated quantities.
+\par
+\subsection{The E-step}
+The EM algorithm is a simple iterative algorithm that alternates between an expectation step (the "E"-step) and a maximization step (the "M"-step). In order to perform the first E-step, one needs to numerically define the initial matrix of parameter values $\Theta^{(0)}$ and initial mixing proportions $\pi_g^{(0)}$. Let's now define define the $\textit{complete-data log likelihood}$, $l_c(\Theta)$, the following way~:
+\begin{align} \label{eqn:6}
+l_c(\Theta) &= \sum_{i=1}^N \sum_{t=1}^T \sum_{g=1}^G Z_{itg}[\log\pi_g + \log f_g(y_{it}|x_{it},\theta_g)].
+\end{align}
+Since $Z_{itg}$ is a binary variable that perfectly assigns each observation to its true component, $l_c(\Theta)$ reduces to a weighted log likelihood expression for each component. Considering each $\pi_g$ as a fixed constant, one could directly maximize each one of the $G$ expressions with respect to $\theta_g$. Given that $Z_{itg}$ is unobserved, the $k^{th}$ E-step substitutes $Z_{itg}$ by its conditional expectation, $\hat{\tau}^{(k)}_{g}(y_{it}|x_{it},\Theta^{(k)})$, in order to compute the conditional expectation of $l_c(\hat{\Theta})$, which is usually written as
+\begin{align} \label{eqn:7}
+Q(\Theta,\hat{\Theta}^{(k)}) &= \sum_{i=1}^N \sum_{t=1}^T \sum_{g=1}^G \hat{\tau}^{(k)}_{itg}[\log\hat{\pi}^{(k)}_g + \log f_g(y_{it}|x_{it},\theta_g)],
+\end{align}
+where $\hat{\tau}^{(k)}_{itg} = \hat{\tau}^{(k)}_{g}(y_{it}|x_{it},\hat{\Theta}^{(k)})$ for brevity. The first argument in the conditional expectation $Q(\cdot,\cdot)$ is the matrix of true parameters while the second corresponds to its estimated counterpart. Thus, the E-step is only the computation of a conditional expectation based on the posterior probabilities $\hat{\tau}^{(k)}_{itg}$. In the next subsection, it is shown why the use of a probabilistic ("soft") assignment is problematic compared to a categorical ("hard") assignment.
+\subsection{The M-step}
+The M-step simply performs the maximization of the conditional expectation computed in the previous E-step with respect to $\Theta$. This maximization step guarantees that the log likelihood will never decrease and convergence to a stationary point will be reached after a finite number of iterations \citep{dempster_maximum_1977,wu_convergence_1983}. The parameter values $\hat{\Theta}^{(k+1)}$ obtained after the $k^{th}$ maximization step consist in the appropriate roots of the following first-order conditions~:
+\begin{align} \label{eqn:8}
+\sum_{i=1}^N \sum_{t=1}^T \sum_{g=1}^G \hat{\tau}^{(k)}_{itg} \frac{\partial \log f_g(y_{it}|x_{it},\theta_g)}{\partial\Theta} = 0
+\end{align}
+Depending on the distributions $f_g$, a closed-form solution for equation (\ref{eqn:8}) might exist. If not, one could employ an appropriate variant of Newton's method in order to identify the roots, as in \cite{cappe_-line_2009}. One can also note that the maximization in (\ref{eqn:8}) does not depend on the mixing proportions $\hat{\pi}^{(k)}_g$ since those are treated as constants at each M-step.
+\subsection{Inconsistency of the EM algorithm}
+In this section, I show why the EM algorithm yields inconsistent results quite often; that is, it gets "stuck" in spurious stationary points most of the time. This probably explains why most econometricians decided to put aside parametric estimation of finite mixtures and focused more on nonparametric estimation methods \citep{compiani_using_2016}. 
+\par
+Actually, the EM algorithm is most often used Even with perfectly specified functional forms, the EM algorithm might still converge to a spurious stationary point, either a saddle point, a local maximizer or a local minimizer \citep{mclachlan_em_2008}. In fact, there is absolutely no guarantee that the EM algorithm converges to a global maximizer for a given set of initial parameter values. This is also why many algorithms have been developed in order to search for optimal initial values that would make EM converge to a solution sufficiently close to the true parameter values $\Theta$ \citep{fruhwirth-schnatter_em_2019}.
+\par
+Such an issue can be illustrated with the following heuristic example. Let's define as $g_{it}^0$ the component from which the $\textit{it}^{th}$ observation had actually arisen from. Let's also define the score function $s_{it}(\theta_g)$ as the derivative of the log density, $\log f_g(y_{it}|x_{it},\theta_g)$, with respect to $\Theta$. Equation (\ref{eqn:8}) may then be rewritten accordingly~:
+\begin{align} \label{eqn:9}
+\sum_{i=1}^N \sum_{t=1}^T \hat{\tau}^{(k)}_{itg_{it}^{0}} s_{it}(\theta_{g_{it}^0}) + \sum_{i=1}^N \sum_{t=1}^T \sum_{g\ne g_{it}^0} \hat{\tau}^{(k)}_{itg} s_{it}(\theta_{g}) = 0
+\end{align}
+Let's assume that $\hat{\tau}^{(k)}_{itg_{it}^{0}} = 1/G + d_{it}^{(k)} + e_{itg_{it}^{0}}^{(k)}$, where $d_{it}^{(k)}$ is a fixed constant and $e_{itg_{it}^{0}}^{(k)}$ is a random variable with mean zero and a variance small enough such that $\hat{\tau}^{(k)}_{itg_{it}^{0}}$ remains bounded between 0 and 1. During the first iterations of the EM algorithm, $d_{it}^{(k)}$ is more likely to be close to zero as the components are not well defined and the posterior probability of being assigned to the "true" component will be close to $1/G$ for most components, especially when using random initialization schemes.\footnote{Throughout the document, I assume that the number of component $G$ is known and that the $G$ estimated densities, $f_g(\mathbf{y}|\mathbf{x},\hat{\theta})$ are always discernible between each other and that all estimated densities could be paired with one of the $G$ true densities at each iteration (based on a divergence measure such as the Kullback-Leibler divergence) if those were observable. This type of assumption is not very strong since random initialization makes it unlikely for two or more densities to be identical.} After a few iterations, components become more clearly defined and $d_{it}^{(k)}$ tends to increase for all observations. For the sake of the demonstration, we assume that $s_{it}(\theta_g) = s_{it}(\theta) \ \forall \ g\ne g_{it}^0$, so we can define the "other" posterior probabilities the following way\footnote{The demonstration still holds without this symmetry assumption, but the notation and the interpretation both get much more challenging.}
+\begin{align} \label{eqn:10}
+\hat{\tau}^{(k)}_{itg} = \frac{1-(1/G + d_{it}^{(k)} + e_{itg_{it}^{0}}^{(k)})}{G-1} \ \ \text{for} \ \ g \ne g_{it}^0.
+\end{align}
+\par
+Substituting the posterior probabilities in (\ref{eqn:9}) by their respective definition and simplifying a little by taking expectation and rearranging the sums, one gets to the following expression~:
+\begin{align} \label{eqn:11}
+\sum_{i=1}^N \sum_{t=1}^T \left[\left(\frac{1}{G} + d_{it}^{(k)}\right) s_{it}(\theta_{g_{it}^0}) + \left(\frac{G-1}{G} - d_{it}^{(k)}\right) s_{it}(\theta)\right] = 0
+\end{align}
+It is clear that for any value of $d_{it}^{(k)}$ that is lower than $(G-1)/G$, the $k^{th}$ M-step will be based upon a weighted average between a "true" score function, $s_{it}(\theta_{g_{it}^0})$, and a "biased" one, $s_{it}(\theta)$. The magnitude of the bias increases with the total number of components, $G$, while it reduces when $d^{(k)}$ increases. As a result, the EM algorithm is expected to perform poorly when the number of components is large, as previously acknowledged in the literature \citep{balakrishnan_statistical_2017}. Furthermore, this simple example clearly shows that, with randomly assigned initial values, $d_{it}^{(0)}$ is likely to be relatively small, which will make the whole algorithm more likely to converge toward a spurious stationary point.
+\par
+This simple example clearly showed the importance of increasing the initial posterior probability of each observation of being assigned to its "true" component. One simple way to do that is to adopt a Classification EM (CEM) approach instead, which is described in the next section. But before going into the details, a more formal proof of the inconsistency of the EM algorithm is shown below.
+\par
+Let's define the observed-data log likelihood, $l_o(\Theta)$, as the following quantity~:
+\begin{align}\label{eqn:12}
+l_o(\Theta) &=  \sum_{i=1}^N \sum_{t=1}^T \log (\sum_{g=1}^G \pi_gf_g(y_{it}|x_{it},\theta_g)).
+\end{align}
+The observed-data log likelihood is obtained directly from the log joint density. This quantity is the one that is usually maximized with respect to the vector of parameters within standard maximum likelihood estimation procedure. However, the "log-sum" part makes this expression relatively hard to maximize with respect to $\Theta$ in the context of finite mixtures and latent class analysis. Instead, the EM algorithm uses the fact that the observed-data log likelihood and the complete-data log likelihood are related together according to the following equation \citep{fruhwirth-schnatter_em_2019}:
+\begin{align}\label{eqn:13}
+l_o(\Theta) &= \sum_{i=1}^N \sum_{t=1}^T \sum_{g=1}^G Z_{itg}[\log(\pi_gf_g(y_{it}|x_{it},\theta_g))] - \sum_{i=1}^N \sum_{t=1}^T \sum_{g=1}^G Z_{itg} \log \tau_{itg}\\
+l_o(\Theta) &= l_c(\Theta) + H_c(\Theta)  \nonumber
+\end{align}
+where $l_c(\Theta)$ is the same as above and $H_c(\Theta)$ is the \textit{complete-data entropy} of $\tau_{itg}$. Given that $H_c(\Theta)$ is strictly positive, maximizing $l_c(\Theta)$ is equivalent to maximizing a lower bound of $l_o(\Theta)$ over all the parameter space $\Omega$. The EM algorithm does not however maximize $l_c(\Theta)$ directly but rather its conditional expectation, from which the above equality still holds because~:
+\begin{align}\label{eqn:14}
+\mathbb{E}_{Z}[l_o(\Theta)] &= \mathbb{E}_{Z}[l_c(\Theta)] + \mathbb{E}_{Z}[H_c(\Theta)]\nonumber \\
+\mathbb{E}_{Z}[l_o(\Theta)] &= \sum_{i=1}^N \sum_{t=1}^T \sum_{g=1}^G (\mathbb{P}[Z_{itg}=1][\log(\pi_gf(y_{it}|x_{it},\Theta, Z_{itg}=1))] - \mathbb{P}[Z_{itg}=1]\log \tau_{itg}), \nonumber \\
+\mathbb{E}_{Z}[l_o(\Theta)] &= \sum_{i=1}^N \sum_{t=1}^T \sum_{g=1}^G (\tau_{itg}[\log(\pi_gf_g(y_{it}|x_{it},\theta_g))] - \tau_{itg} \log \tau_{itg}), \\
+\mathbb{E}_{Z}[l_o(\Theta)] &= \sum_{i=1}^N \sum_{t=1}^T \sum_{g=1}^G \tau_{itg}[\log(\sum_{g=1}^G \pi_gf_g(y_{it}|x_{it},\theta_g))], \nonumber \\
+\mathbb{E}_{Z}[l_o(\Theta)] &= \sum_{i=1}^N \sum_{t=1}^T \log(\sum_{g=1}^G \pi_gf_g(y_{it}|x_{it},\theta_g)) = l_o(\Theta), \nonumber
+\end{align}
+given that posterior probabilities always sum to one and that the "log-sum" term is a constant for each $it^{th}$ observation. The last equation shows that the conditional expectation of the observed-data log likelihood is an unbiased estimator of the complete-data log likelihood. From equation $(\ref{eqn:14})$, one can note that the complete-data log likelihood actually corresponds to the negative value of the Kullback-Leibler divergence between the conditional expectation of the complete-data log likelihood and the entropy of $\tau_{itg}$. Thus, the EM algorithm actually attempts to minimize the K-L divergence by maximizing $\mathbb{E}_{Z}[l_c(\Theta)]$ with respect to $\Theta$ at each iteration.
+\par
+When looking at the second term of both equations $(\ref{eqn:13})$ and $(\ref{eqn:14})$, it can be shown that (dropping the sums on $i$ and $t$ for convenience; the detailed proof is shown in the Appendix)~:
+\begin{align}\label{eqn:15}
+\sum_{g=1}^G Z_{itg} \log \tau_{itg} &\lesseqqgtr \sum_{g=1}^G \tau_{itg} \log \tau_{itg} \ \Leftrightarrow \ \tau_{itg^0_{it}} \lesseqqgtr \tau_{itg}, \forall \ g \ne g^0_{it},
+\intertext{and where $\tau_{itl} \in (0,1), \ l=(1,...,G)$. Given that equations $(\ref{eqn:13})$ and $(\ref{eqn:14})$ always hold and are both equal to $l_o(\Theta)$, directly implies~:}\label{eqn:16}
+\log(\pi_{g^0_{it}}f_{g^0_{it}}(y_{it}|x_{it},\theta_{g^0_{it}})) &\lesseqqgtr \sum_{g=1}^G \tau_{itg}\log(\pi_gf_g(y_{it}|x_{it},\theta_g)) \ \Leftrightarrow \ \tau_{itg^0_{it}} \lesseqqgtr \tau_{itg}, \forall \ g \ne g^0_{it},
+\end{align}
+where the term of on the LHS corresponds to the $it^{th}$ contribution to the complete-data log likelihood while the term on the RHS is its conditional expectation.
+\par
+Equivalence (\ref{eqn:16}) shows that, if the posterior probability that the $it^{th}$ observation is correctly classified is the highest probability among all G probabilities, then the conditional expectation on the RHS is strictly lower its complete-data log likelihood. As a result, the maximization of the conditional expectation implied in the EM algorithm maximizes a lower bound of the complete-data log likelihood, and this lower bound gets lower as $\tau_{itg^0_{it}}$ stay below a certain threshold $\tilde{\tau}_{itg}$ (see the Appendix for more details). On the opposite, when the $it^{th}$ observation is "strongly misclassified", which means that $\tau_{itg} > \tau_{itg^0_{it}}, \ \forall \ g \ne g^0_{it}$, its conditional expectation is higher than its complete-data counterpart and the subsequent M-steps will be biased until the observation gets "properly" classified (i.e. $\tau_{itg} < \tau_{itg^0_{it}}, \ \forall \ g \ne g^0_{it}$). This shows that the EM algorithm is quite likely to get stuck in a spurious stationary point due to the fact that the conditional expectation of the complete-data log likelihood is a biased estimate of the complete-data log likelihood when $\tau_{itg^0_{it}} \ne 1/G$ for $\tau_{itl} \in (0,1), \ l=(1,...,G)$.\footnote{In the context of "soft" probabilistic assignment, the interval domain of all posterior probabilities is not compact, but rather bounded and open since no posterior probability can ever be equal to zero exactly.} This bias increases when $\tau_{itg^0_{it}}$ goes from $1/G$ to $\tilde{\tau}_{itg}$, but decreases when $\tau_{itg^0_{it}}$ approaches 1 (see Figure \ref{fig:1} in the Appendix). It also increases to infinity as $\tau_{itg^0_{it}}$ approaches 0.
+\par
+Indeed, the EM algorithm might still converge to the global maximum even though the conditional expectation of the of the complete-data log likelihood is biased. However, as the aggregate bias increases (i.e. the sum of each observation's bias), the probability that the EM algorithm does not converge to the global maximum increases as well. This point had been previously addressed by \cite{gepperth_gradient-based_2021}, but, according to me, their demonstration was not as clear and convincing as this one. Figure \ref{fig:1} in the Appendix shows that the bias can become quite large as $\tau_{itg^0_{it}}$ increases from $1/G$ to $\tilde{\tau}_{itg}$.
+\par
+Finally, I want to point out the fact that the prior used in the calculation of the posterior probabilities are too informative and may add up to the inconsistencies described earlier. Indeed, the posterior probabilities, as defined in equation (\ref{eqn:4}), use the estimated mixing proportions as informative priors when computing $\hat{\tau}^{(k)}_{itg}$ for all components and observations. Since the mixing proportions are estimated quantities that vary at each iteration of the EM algorithm, using those changing quantities as informative priors for each iteration does not add meaningful information to what's already embedded in the estimated likelihood values $f_g(y_{it}|x_{it},\hat{\theta}_{g}^{(k)})$. A more agnostic procedure would be to assume non-informative priors at each iteration of the EM algorithm, which amounts to enforce that $\hat{\pi}_{g}^{(k)} = 1/G$ for all $g = (1,...,G)$ and all $k$. It is also important to distinguish the estimated mixing proportions $\hat{\pi}_{g}^{(k)}$ from the vector of population values $\Pi = (\pi_1,...,\pi_G)$, which is assumed to be known in the definition of the joint density. From now on, we will assume that $\hat{\pi}_{g}^{(k)} = 1/G$ for all $g = (1,...,G)$ and all $k$, so that $\hat{\tau}^{(k)}_{itg} = \frac{f_g(y_{it}|x_{it},\hat{\theta}_{g}^{(k)})}{\sum_g f_g(y_{it}|x_{it},\hat{\theta}_{g}^{(k)})}$.
+\subsection{Estimation of unrestricted covariance matrices}
+I haven't really checked this topic yet, but I know this might be an issue since covariance matrices in finite mixtures are usually strongly restricted to allow for identification. I am not yet covering this topic in this document, but I will later. So, for now, I assume that all covariance matrices (one by component) are completely identical.
+\section{The classification EM algorithm}
+The principle behind the classification EM (CEM) algorithm is directly related to the classification ML approach, which dates back at least to the mid-1970's \citep{mclachlan_iterative_1975}. Both approach are based on "hard" assignment instead of "soft" assignment, as with the EM algorithm. This hard assignment procedure is similar to the Baye's rule of optimal allocation in the context of clustering algorithm, which is simply defined as~:
+\begin{align*}
+\hat{Z}_{itg}^{(k)} =
+\begin{cases}
+ 1 \ \ \text{if} \ g = \arg\underset{g}\max  \ \mathbb{P}[\hat{Z}^{(k)}_{itg}=1] =\arg\underset{g}\max  \ \hat{\tau}^{(k)}_{itg} \\
+ 0 \ \ \text{otherwise}
+\end{cases}
+\end{align*}
+It is worth noting here that the general CEM approach is less biased than the EM algorithm because it maximizes a lower bound of the whole observed-data log likelihood, not a lower bound of the complete-data log likelihood. This "tighter" lower bound is defined as the \textit{max-component log likelihood}~:
+\begin{align}\label{eqn:17}
+l_{MC}(\Theta) &=  \sum_{i=1}^N \sum_{t=1}^T \log (\pi_{g_{it}^*}f_{g_{it}^*}(y_{it}|x_{it},\theta_{g_{it}^*})) \le  \sum_{i=1}^N \sum_{t=1}^T \log (\sum_{g=1}^G \pi_gf_g(y_{it}|x_{it},\theta_g)) = l_{o}(\Theta),
+\end{align}
+where $g_{it}^*$ is the component that maximizes the posterior probability of the $it^{th}$ observation. It is easily seen that $l_{MC}(\Theta)$ reduces to $l_{c}(\Theta) = l_{o}(\Theta)$ if $g^*_{it} = g^0_{it}$ for all $i = (1,...,N)$ and all $t = (1,...,T)$, which corresponds to perfect classification of all observations.\footnote{This happens because the complete-data entropy equals zero when $g^*_{it} = g^0_{it}$ given that $0 \times \log(0) = 0$ and $1 \times \log(1) = 0$.} This implies that the max-component log likelihood is an unbiased estimate of the observed-data log likelihood if, at the $k^{th}$ iteration, $\hat{\tau}^{(k)}_{itg^0_{it}} > \hat{\tau}^{(k)}_{itg}, \ \forall \ g \ne g^0_{it}$ for all $i$ and all $t$. This also implies that the next M-step will necessarily yield consistent estimates of $\Theta$ as this next M-step is equivalent to maximizing the complete-data log likelihood, which is consistent and efficient by construction (assuming perfect specification for all components, of course). Needless to say that this consistency condition is much less stringent than the EM condition where all M-steps are always biased, unless $\hat{\tau}^{(k)}_{itg^0_{it}} = 1/G$ for all observations (which can never occur with probability one).
+\par
+However, it is well known that the max-component log likelihood may still yield problematic solutions to the optimization problem, such as single/sparse-component solutions  \citep{gepperth_gradient-based_2020,mclachlan_finite_2019,ganesalingam_classification_1989}. This happens when some components have equal weights between each other whereas all other components have a null weight. This is the type of solution one may obtain with "hard" assignment and no good initialization procedure. To minimize the occurrence of such situations, \cite{celeux_classification_1992} developed two stochastic versions of the standard CEM algorithm that present nice features compared to the standard EM algorithm. The first one is the stochastic EM algorithm (SEM) where $\hat{Z}_{itg}^{(k)}$ is randomly drawn from a multinomial distribution with probabilities equal to $ \hat{\tau}^{(k)}_{it} = ( \hat{\tau}^{(k)}_{it1},..., \hat{\tau}^{(k)}_{itG})$ instead of being defined as above. This procedure adds an S-step between each E-step and M-step of the standard EM algorithm, which actually provides an hard assignment procedure but slightly different from the standard CEM algorithm. By adding this stochastic step, the log likelihood might decrease between two consecutive M-steps, which can help the objective function from not getting stuck in a spurious stationary point.
+\par
+The second stochastic version of the CEM algorithm shown in \cite{celeux_classification_1992} is similar to the one I will use in the context of my third-year paper. It uses an annealing procedure so the algorithm starts as if it was in a pure SEM framework and slowly converges to a pure CEM framework as the annealing temperature "cools down". The procedure could be modified so to start with the standard EM algorithm instead of the SEM; what is important is to finish with a pure CEM framework using hard assignment, as shown above. The authors baptized this general procedure the Classification Annealing EM (CAEM) algorithm. One feature that makes this type of algorithm superior to the others is that the annealing procedure search for optimal initial parameter values at the beginning of the procedure while simultaneously improving the precision of the estimated parameters. This simultaneous "search-estimation" procedure is an inherent feature of the annealing procedure and does not have to be performed in distinct, separate steps. As a result, this precludes the use of initialization algorithms such as \textit{k-means} algorithm or others such as those shown in \cite{fruhwirth-schnatter_em_2019}.
+\par
+The general idea of the CAEM had been recently employed by \cite{gepperth_gradient-based_2021} and \cite{gepperth_gradient-based_2020} in the context of image recognition. Instead of relying on a S-step at the middle of each iteration, they use stochastic gradient descent (SGD) in order to train their model, which starts with pure EM algorithm and slowly converges to pure CEM as the annealing procedure evolves. Training the model with SGD has several advantages, namely that it allows the log likelihood to decrease between two consecutive SGD updates, an important feature of the SEM algorithm. It also allows for online (or "mini-batch") training, which is something that can be of great value considering that the EM algorithm is typically a full-batch algorithm and only few online versions of it actually exist and are known to be efficient \citep{cappe_-line_2009}. This can also alleviate much of the computational burden associated with large dataset. Finally, the SGD training procedure can be adjusted to perform approximate Bayesian inference as shown by \cite{mandt_stochastic_2018} and \cite{smith_bayesian_2018}, a topic that will be explicitly detailed later on.
+\subsection{The superiority of two-step procedures in parametric latent class analysis}
+From now on, it should also be clear why estimation algorithms that simultaneously try to point identify the components' parameters and those governing the behavior of the categorical latent variable $Z_{it}$ is misguided. Indeed, the conditional density $f(y_{it}|x_{it},\Theta, Z_{it}=g)$ is generally assumed to be independent from past and future realizations of $Z_{it}$. This implies that $f(y_{it}|x_{it},\Theta, Z_{it}=g) = f_g(y_{it}|x_{it},\theta_g)$ if the component membership of the $it^{th}$ observation is known with certainty. Given the fact that it is generally not the case, one could be tempted to augment the identification power by imposing some functional restrictions on the probability $\mathbb{P}[Z_{it}=g]$ for $g = (1,...,G)$ such as $\mathbb{P}[Z_{it}=g] = h(Z_{it-j-1}, y_{it-k}, x_{it-l})$ with $j,k,l = (0,...,P)$ and $h$ being a functional form defined by the econometrician. This is misguided precisely because we don't know $Z_{it}$ with absolute certainty, so any parametric restriction on the probability $\mathbb{P}[Z_{it}=g]$ will increase the estimation bias at each iteration when using \textit{any} iterative algorithm for the estimation, especially if the function $h$ is not perfectly specified (I will provide a formal proof in the final version of the paper, if necessary). Even when the $h$ function is perfectly specified, it might still yield poor results if the components' specifications are poorly specified given the impact of the components' misspecification on the posterior probabilities \citep{gassiat_inference_2016}.
+\par
+This is namely why parametric HMMs does not generally yield very convincing results in numerical experiments with relatively small sample  \citep{luo_bayesian_2021}. In fact, because the latent state variable is not directly observed at each period but only the posterior probabilities, trying to parametrically model those probabilities is akin to a measurement error issue in a categorical outcome. As a result, simultaneously modeling the latent state variable and the components' density functions using an iterative estimator is likely to worsen the problem as the number of iteration grows, unless proper initialization of all unknown parameters is performed beforehand (so to minimize the measurement error issue at the first iteration).
+\par
+Instead of imposing restrictions on the probability $\mathbb{P}[Z_{it}=g]$, one should try to maximize it for a certain (yet unknown) value of $g$ given the observables $y_{it}$ and $x_{it}$. In the context of mixtures of panel data (and with the help of Baye's rule), that amounts to finding $g$ which maximizes~:
+\begin{align*}
+\mathbb{P}[Z_{it}=g|x_{it},y_{it}] &= \frac{ p(y_{it}|x_{it},Z_{it}=g)p(x_{it}|Z_{it}=g)\mathbb{P}[Z_{it}=g]}{p(y_{it},x_{it})} \nonumber \\
+\mathbb{P}[Z_{it}=g|x_{it},y_{it}] &= \frac{p(y_{it}|x_{it},Z_{it}=g)p(x_{it}|Z_{it}=g)\mathbb{P}[Z_{it}=g]}{\sum_jp(y_{it}|x_{it},Z_{it}=j)p(x_{it}|Z_{it}=j)\mathbb{P}[Z_{it}=j]} \nonumber \\
+\mathbb{P}[Z_{it}=g|x_{it},y_{it}] &\propto p(y_{it}|x_{it},Z_{it}=g)p(x_{it}|Z_{it}=g)\mathbb{P}[Z_{it}=g],
+\end{align*}
+where $p(.)$ denotes any parametric probability density function. If we use non-informative priors just as before, then $\mathbb{P}[Z_{it}=g] = 1/G$ and the former expression reduces to
+\begin{align}\label{eqn:18}
+\mathbb{P}[Z_{it}=g|x_{it},y_{it}] &\propto p(y_{it}|x_{it},Z_{it}=g)p(x_{it}|Z_{it}=g).
+\end{align}
+The first density on the RHS of equation is the conditional density of the outcome, which is maximized when using any maximum likelihood estimator (including all versions of the CEM estimator) and a specific functional form. The second density corresponds to the density of the covariates conditional on belonging to the $g^{th}$ component. If all covariates across individual and across periods are independently and identically distributed, then $p(x_{it}|Z_{it}=g) = p(x_{it})$ and those covariates do not convey any relevant clustering information. It is however much more realistic and convenient to treat covariates as random variables that features an unobserved clustering pattern, and which could be distributed accordingly~:
+\begin{align*}
+p(x_{it}|Z_{it}=g) \overset{d}\sim \mathcal{N}(\mathbf{\mu}_{g},\tilde{\Sigma}),
+\end{align*}
+where $\mathcal{N}(\mathbf{\mu}_{g},\tilde{\Sigma})$ is the $p$-multivariate normal density with mean $\mu_g$ and covariance matrix $\tilde{\Sigma}$. One could also assume that the clustering pattern changes over time, which would introduce $T$ times parameters to estimate. But since those parameters are not really of interest (because they only serve to improve the precision of the classification process), one could impose strict restrictions on all covariance matrices $\tilde{\Sigma}$ (including equality between components, as the notation already suggests). Including those densities inside the estimation procedure is also relatively straightforward and computationally efficient if $p$ is small and they convey important clustering information. If $p$ is large, some preliminary clustering analysis such as Principal Component Analysis (PCA) could be done in order to select the most relevant densities to include in the objective function.
+\par\textit{}
+Generally speaking, the purpose of adding some covariates' conditional densities to the objective function is to exploit all the information embedded into the observed data as a way to reduce the risk of misclassification when using a CEM algorithm. This is similar to performing a preliminary \textit{k-means} algorithm on all (or some of) the covariates that are introduced in the conditional joint density $f(\mathbf{y}|\mathbf{x},\Theta)$ in order to identify optimal initial values. As with the CAEM approach, adding those conditional densities to the objective function limits even more the necessity to perform such preliminary initialization algorithms.
+\par
+In summary, it is crucial to realize that the consistency of most latent class algorithms depends on the asymptotic rate of classification error at convergence. Perfect classification for all observations might not be possible in many real-world applications, but slight deviation from perfect classification might still yield very good results in terms of both bias and precision. Hence, any parametric latent class analysis should aim at reducing the classification error before thinking about restricting the behavior of the latent state variable. This advocates for the widespread use two-step estimation procedures in latent class analyses, where the second step models the overall behavior of the latent state variable \textit{only once} the various realizations of the latent state variable had been properly assessed in the first step.
+\section{Estimation of mixtures of fixed effects panel data using a CAEM-SGD procedure}
+Apart from my own work \citep{langevin_estimating_2021}, I have never seen anyone use any version of the CAEM algorithm for estimating finite mixtures of panel data. This is why I will now focus on this topic. I will augment the previous section in a few days showing exactly why the CAEM framework is generally superior to the standard EM algorithm. Besides, my own preliminary results confirm the superiority of this approach compared to EM when using SGD, as in \cite{gepperth_gradient-based_2021}, for estimating panel data finite mixtures.
+\par
+Going back to the literature, \cite{deb_finite_2013} showed how to estimate finite mixtures with fixed-effects panel data for both Gaussian and Poisson regression mixtures using the EM algorithm and conditional (or profile) maximum likelihood estimates (CML), but they assumed fixed component membership over time (i.e. $\hat{\tau}_{itg} = \hat{\tau}_{ig}$). \cite{hyppolite_alternative_2017} uses correlated random effects (CRE) to estimate an endogenous switching regression model (hence with non-fixed component membership over time), but the estimation is carried out with the standard EM algorithm and the endogeneity is modeled via the simultaneous estimation of the latent state variable and the component densities. Moreover, the CRE modeled in the paper are not completely unrestricted as they are computed using the covariates' time-average of all periods for each individual instead of relying on the covariates' (weighted) time-average for each component separately.
+\par
+In this section, I will describe the estimation of a totally unrestricted unit-fixed effects model of Gaussian mixtures using three different fixed effects estimators and the general CEM approach (which can be easily upgraded to a CAEM approach afterwards). For most of my models, I will rely on the two-way Mundlak approach, as described in \cite{wooldridge_two-way_2021}, since it is equivalent to the standard two-way fixed effects model in case the latter cannot be used.\footnote{CML could also be used in a few nonlinear models such as the binary choice logit model, the Poisson regression model and the proportional hazards model. Since the applicability of the CML is somewhat limited to those distributions, it will not be used for now. But perhaps later.} These approaches can also be compared to other recent panel data estimators that accounts for time-varying unobserved heterogeneity while trying to remain parsimonious, such as the Group fixed effects (GFE) estimator of \cite{bonhomme_grouped_2015}, the Grouped adaptive group fused lasso (GAGFL) of \cite{okui_heterogeneous_2021}, and the classifier-Lasso of \cite{su_identifying_2016}. One goal of my third-year paper is to compare my method to the GFE estimator with heterogeneous coefficients and unit-fixed effects using simulated data.
+\subsection{General estimation principle}
+The estimation method I will use in my third-year paper consists in a slightly modified version of the estimator developed by \cite{gepperth_gradient-based_2020} and \cite{gepperth_gradient-based_2021}. The modifications I will bring to the estimation method concerns mainly the annealing function, the computation of the posterior probabilities (as mentioned above) and the inclusion of the conditional density of the (or some of the) covariates in the objective function. This estimation procedure uses SGD to train the model, which makes it very flexible and computationally efficient.
+\par
+It is important to note here that SGD randomly draws observation from the whole sample and that the number of observations to be drawn (i.e. the batach size) is one hyperparameter to be determined by the econometrician. This said, the basic principle of SGD is based on the following recursive equation~:
+\begin{align*}
+\Theta^{(k)} = \Theta^{(k-1)} - \frac{t_k}{bT} \sum_{i\in I_k}^{b} \nabla \tilde{f}_{i}(\Theta^{(k-1)}|y_{i},x_i),
+\end{align*}
+where $\Theta^{(k)}$ is the vector of parameter that is obtained at the $k^{th}$ iteration of the SGD procedure, $I_k \subseteq \{1,...,N\}$ is a set of randomly chosen discrete number of size $b$ that changes at each iteration, $t_k$ is the learning rate, which is fixed by the econometrician and which could also be constant (i.e. $t_k = t$, usually called constant SGD), $b$ is the batch size, and $\nabla \tilde{f}_{i}(.)$ is the gradient of the $\tilde{f}$ objective function with respect to $\Theta^{(k-1)}$ evaluated at $(y_i,x_i)$ where $y_i=(y_{i1},...,y_{iT})'$ and $x_i=(x_{i1},...,x_{iT})'$. In the context of fixed effects mixture models, $b$ individuals are randomly drawn from the total $N$ individuals in the sample. The total number of observations to be used at each iteration of the SGD procedure is thus equal to $bT$ (and this is why the gradient is averaged over $bT$ observations). 
+\par
+In the context of the CEM algorithm, the function $\tilde{f}$ is equal to the $l_{MC}(\Theta)$ objective function that was previously defined in equation (\ref{eqn:17}), but summing only over selected individuals at each iteration. Modifying the objective function in order to add an annealing function in order to transform the above objective function into a CAEM objective function is shown in the following equation~:
+\begin{align}\label{eqn:19}
+\tilde{f}_{i}(\Theta^{(k-1)}|y_{i},x_i) = \sum_{t=1}^T \sum_{g=1}^G h^{(k-1)}_{itg}(\lambda,\theta_g^{(k-1)}) \log  (\pi_{g}f_{g}(y_{it},x_{it}|\theta^{(k-1)}_g)),
+\end{align}
+where $h^{(k-1)}_{itg}(\lambda,\theta_g^{(k-1)})$ is the annealing function and where $\pi_{g}$ is again treated as a constant. Note also that we use $f_{g}(y_{it},x_{it}|\theta^{(k-1)}_g) = f_{g}(y_{it}|x_{it},\beta^{(k-1)}_{g},\Sigma^{(k-1)})p_g(x_{it}|\mu^{(k-1)}_g,\tilde{\Sigma}^{(k-1)})$ in the objective function instead of $f_{g}(y_{it}|x_{it},\theta^{(k-1)}_g)$ given what has been said in section 3.1. Note that both covariance matrices $\Sigma^{(k-1)}$ and $\tilde{\Sigma}^{(k-1)}$ are assumed identical across components. When $\lambda$ is large, then $h^{(k-1)}_{itg}(\lambda,\theta_g^{(k-1)}) \approx \hat{\tau}^{(k-1)}_{itg}$, whereas $\lim_{\lambda\to 0} h^{(k-1)}_{itg}(\lambda,\theta_g^{(k-1)}) = \mathbf{1}[g = g^*_{it}]$. A simple example of an annealing function corresponds to the following~:
+\begin{align*}
+h^{(k-1)}_{itg}(\lambda,\theta_g^{(k-1)}) = \frac{(f_g(y_{it},x_{it}|\theta^{(k-1)}_g))^{1/\lambda}}{\sum_{g=1}^G (f_g(y_{it},x_{it}|\theta^{(k-1)}_g))^{1/\lambda}}.
+\end{align*}
+\par
+When $\lambda = 1$, we recover the standard conditional log-likelihood from the EM algorithm for the $i^{th}$ individual. As $\lambda$ slowly approaches zero from above, the component with the highest posterior probability will dominate the others and the objective function will slowly converge to the max-component log-likelihood $l_{MC}$. The speed at which $\lambda$ decreases to zero is very important to ensure proper convergence and will be addressed later on. 
+\subsection{Gaussian mixture}
+A typical case is when the conditional densities $f_g(y_{it}|x_{it},\beta_g,\Sigma)$ and $p_g(x_{it}|\mu_g,\tilde{\Sigma})$ are assumed to be multivariate normal densities with $\mathbb{E}[y_{it}] = x_{it}'\hat{\beta}_{g^0_{it}}$ and $\mathbb{E}[x_{it}] = \mu_{g^0_{it}}$. Because we assume that component membership can change over time, it is not possible to use standard fixed effects estimators, such as the within or the first-difference (FD) estimator, with an objective function of the form of equation (\ref{eqn:19}). In the context of multivariate normal distributions, equation (\ref{eqn:19}) actually represents the objective function of the weighted least square estimator where the weights are the values of the annealing function for each observation, at each iteration. Hence, it is not possible to compute first-differences or deviations-to-the-mean in this context due to the changing weights between and within individuals and due to the fact that those weights directly apply to the observations in levels. The LSDV approach may still be employed in such a situation, but it would require initial fixed effect values for each individual at each iteration. This also makes the estimation procedure potentially vulnerable to the incidental parameter problem, especially with nonlinear models.
+\par
+In this context, it is thus preferred to use correlated random-effects (CRE), such as the Mundlak approach, in order to account for component-varying unit fixed effects. This approach allows the unit-specific time averages to be computed as weighted averages with the values of the annealing function as the corresponding weights. The same logic applies to time-fixed effects where the cross-sectional weighted averages can be easily computed and introduced in specification, thus preventing the rise of the incidental parameter problem in the context of small batch size at each iteration \citep{fernandez-val_individual_2016}. This approach is also argued to be equivalent to the standard two-way fixed effects (TWFE) and was recently called the two-way Mundlak regression \citep{wooldridge_two-way_2021}. However, because the weights are not known \textit{a priori}, an iterative procedure can be used to compute stationary weights at each "outer" iteration of the CAEM-SGD procedure. The following steps explain how to perform the whole estimation procedure.
+\par
+Let's assume that the panel is perfectly balanced and that we have in hand an estimate of all parameters of interest $\hat{\theta}_g^{(k-1)} = (\hat{\beta}_g^{(k-1)},\hat{\Sigma}^{(k-1)},\hat{\mu}^{(k-1)}_g,\hat{\tilde{\Sigma}}^{(k-1)})$ for all $g$ components. Those estimates were obtained after performing the $k-1^{th}$ iteration of the CAEM-SGD algorithm. The vector of parameters $\hat{\beta}_g^{(k-1)}$ excludes estimates of unit-fixed effects (and unit-specific time trends as well). The algorithm is described by the following steps~:
+\begin{enumerate}
+	\item Compute the standard time and cross-sectional average values for each covariate using all selected observations $i\in I_k$ at the beginning of the $k^{th}$ iteration.
+	\item Using the previously computed average values, compute $f_g(y_{it},x_{it}|\hat{\theta}_g^{(k-1)})$ for all selected observations and all components at each period.
+	\item Use the computed densities to estimate the annealing values $h_{itg}^{(k)}(\lambda,\hat{\theta}_g^{(k-1)})$ for all selected observations and all components at each period.
+	\item Compute the weighted time average values and weighted cross-sectional average values of each covariate using the annealing values computed in step 2 as the weights.
+	\item Go back to step 3 and repeat until the annealing values $h_{itg}^{(k)}(\lambda,\hat{\theta}_g^{(k-1)})$ for this $k^{th}$ "outer" iteration reach convergence (according to a certain tolerance level).
+	\item Perform the next CAEM-SGD update using the latest estimated densities in order to obtain updated parameters $\hat{\theta}_g^{(k)}$ for all components.
+	\item Go back to step 1 and replace $\hat{\theta}_g^{(k-1)}$ by $\hat{\theta}_g^{(k)}$ until global convergence is reached (according to a certain tolerance level).
+\end{enumerate} 
+The idea with this double iterative estimation procedure is to minimize the number of restrictive assumptions regarding the estimation of the unit- and time-fixed effects without suffering from the incidental parameter problem. One overly restrictive assumption generally encountered in the related literature is that individual component membership is fixed over time. Such an assumption implies that injured individuals could never recover from their injuries, or conversely experience steady physiological decline after this injury. Another restrictive assumption that is actually relaxed with the above procedure is the constant nature of unit fixed effects between components for a single individual. Step 3 allows for the presence of unit fixed effects that are not constant across components, something that was never really considered before. Hence, the estimator is akin to the GFE estimator of \cite{bonhomme_grouped_2015}, but allows for greater flexibility, namely with the inclusion of time fixed effects that differ across components. Furthermore, contrary to \cite{hyppolite_alternative_2017}, the CRE estimator that can be used here is more flexible since it allows for the covariates' (weighted) time averages and cross-sectional averages to differ between components.
+\par
+However, the procedure described above does not account for the potential non-stationarity of the variables.\footnote{Nonetheless, the FD estimator could be employed when $\lambda$ gets very close to zero, since then the log likelihood will be similar to the max-component log likelihood. First-differencing consecutive observations that remains in the same component over time would then now be possible, something that cannot be done when the annealing values are not binary.} In panel data, not accounting for the non-stationarity of one or many variables can result in substantial estimation bias when no cointegrated relationship exist between the non-stationary variables. A specific part of the third-year paper will be dedicated to this topic. It is also important to consider the possibility that unit roots may be present in only a few components and not the others. And even when all variables are stationary, spurious regressions might still occurs if the outcome and some covariates are moderately to strongly persistent over time \citep{granger_spurious_2001}. This advocates for the inclusion of lagged dependent variable in all specifications, a topic that will not be discussed for the moment.
+\subsection{Nonlinear models}
+Extension of the above described procedure to nonlinear model adds more complexity depending on the distributions employed. For now, I will concentrate on the typical distribution that is used when modeling healthcare spending, which is a two-part log-normal model. The binary part is typically modeled by a logistic regression and the continuous part is, as the name suggest, modeled by a log-normal regression. As it is well known with the logistic regression, the incidental parameter problem and the discrete nature of the outcome directly limits the use either the LSDV, the within, or the FD estimator for estimating fixed effects logit models. This advocates even more in favor of the two-way Mundlak approach for this type of nonlinear models. The log-normal part of the model does not suffer from such limitations if we use the log-transformed outcome as the new dependent variable in the model.\footnote{In order to get expected mean values on the original-scale and not on the log-scale, one would still need to transform back the predicted outcome using one retransformation scheme such as the one proposed by \cite{duan_smearing_1983}.} However, both parts of the model need to employ the same estimator for the estimation procedure to work properly.
+\par
+Nevertheless, the two-way Mundlak specification has several advantages when estimating nonlinear models such as the two-part log-normal one. First, it is easy to compute for both part of the model. Second, it allows for the inclusion of additive unit- and time-random effects in both parts of the model. Third, one can assume non-null covariance between the unit-random effects of each part, thus relaxing the independence assumption between the "decision" and the "intensity" equations. This independence assumption is naturally present in standard two-part models and it is known to bias estimates when not valid with longitudinal semicontinuous data \citep{su_bias_2009,olsen_two-part_2001}.\footnote{This is akin to sample selection bias in cross-sectional framework, but the longitudinal aspect of the data minimizes the issue given that vast majority of individuals will present medical healthcare consumption in at least one period. However, it is true that there might still be a selection bias created by people who never consumed any medical resources over the entire considered time window, but this bias is likely to be small since those individuals will be concentrated in a single component of "indivudals with very-low consumption".} Those correlated random effects (not to be confused with the CRE estimator) could be accounted for using SGD as approximate Bayesian inference, as described by \cite{mandt_stochastic_2018} and \cite{smith_bayesian_2018}. This has the double benefit of directly overcoming the label-switching issue that is typically encountered in Bayesian finite mixture models \citep{fruhwirth-schnatter_finite_2006,jasra_markov_2005} while not adding much to the complexity of the estimation procedure (the approximate Bayesian procedure of \cite{mandt_stochastic_2018} is quite simple to implement and is based upon constant SGD, which reduces the number of hyperparameters to determine). Finally, \cite{wooldridge_two-way_2021} showed that the two-way Mundlak specification is akin to the standard two-way fixed effects specification and could be used in the context of program evaluation, which will be done later on.
+\par
+Other nonlinear models such as the Poisson regression and the negative binomial regressions could be used to model the number of visits to the emergency department, the number of visits to the general practitioner, the number of drugs prescribed or the number of hospitalized days spent over a specific period. The above described procedure also applies for these outcomes when using the two-way Mundlak specification.
+\section{Monte Carlo experiments and empirical analysis}
+With everything that's been described so far, the main goal of the third-year paper is to use simulated data to compare the performance between these four estimators~:\footnote{This section might be subject to a lot of changes, but that's what I am focusing on right now.}
+\begin{enumerate}
+	\item the CAEM-SGD with the two-way Mundlak specification, as described above;
+	\item the same method but assuming fixed component membership over time for all individuals (which greatly simplify the estimation procedure);
+	\item a standard hidden Markov model estimated with the original EM algorithm;
+	\item the GFE estimator of \cite{bonhomme_grouped_2015} with heterogeneous coefficients and unit-specific fixed effects (see extensions 1 and 2 at page 1152).
+\end{enumerate}
+The first simulation exercise will be performed using simulated mixtures of normal linear regressions. No approximate Bayesian inference will be performed for this first exercise. Given that the GFE estimator has not been yet adapted to nonlinear models, it will only be used in this first simulation exercise. The second simulation exercise will be performed using simulated mixtures of independent two-part log-normal regressions, as described above. Finally, the last simulation exercise will be performed using a mixture of correlated two-part log-normal regressions, for which I will use approximate Bayesian inference with the first two estimators only (to account for the correlation between the two parts). Moreover, robustness to misspecification will also be assessed by making one of the simulated covariate unavailable to the econometrician for all three simulated dataset. Perfect specification and knowledge of the true number of components $G$ will be assumed unless stated otherwise. This yields a total of 20 simulations $((4+3+3)\times 2)$.
+\par
+Components' assignment of each observation will be performed using a first-order Markovian process with observable covariates. Hence, component membership will never be constant in the simulated data. Based on the results of those simulations, applications to real-world data using health administrative data will be performed afterwards. Much work has already been done since I already programmed the CAEM-SGD algorithm in Python, but using unit-random effects that are constant across components instead of unit-fixed effects that may change across components. Some modifications to the algorithm are thus still needed.
+\pagebreak
+\bibliographystyle{chicago}
+\bibliography{PhD}
+\pagebreak
+\appendix
+\section{Proof of equivalence 15}
+Let's define $\tau_{itg}$ as the posterior probabilities of the $it^{th}$ observation to have been generated from the $g^{th}$ component, where $g \ne g^0_{it}$. Second, let's define $b(\tau_{itg^{0}_{it}})$ as the bias of the conditional expectation of the complete-data entropy, which corresponds to the following~:
+\begin{align*}
+b(\tau_{itg^{0}_{it}}) = \sum_{g=1}^G \tau_{itg} \log \tau_{itg} - \log \tau_{itg^{0}_{it}}.
+\end{align*}
+This expression is different from the K-L divergence because the second term is not equal to $\tau_{itg^{0}_{it}}\log (\tau_{itg^{0}_{it}})$. It is easy to see that this bias is equal to zero if and only if $\tau_{itg^{0}_{it}} = \tau_{itg} = 1/G, \ g = (1,...,G)$, assuming that $\tau_{itg} \in (0,1)$ for all $g$.
+\par
+Decomposing the summation part in two and regrouping the $\tau_{itg^{0}_{it}}$ altogether yields the following~:
+\begin{align*}
+b(\tau_{itg^{0}_{it}}) &= (\tau_{itg^{0}_{it}}-1)\log \tau_{itg^{0}_{it}} + \sum_{g\ne g^0_{it}} \tau_{itg} \log \tau_{itg}.
+\end{align*}
+ Deriving $b(\tau_{itg^{0}_{it}})$ with respect to $\tau_{itg^{0}_{it}}$ results, after some simplifications, in the following expression~:
+\begin{align*}
+\frac{\partial b(\tau_{itg^{0}_{it}})}{\partial \tau_{itg^0_{it}}} &= 1 - \frac{1}{\tau_{itg^{0}_{it}}} + \log \tau_{itg^{0}_{it}} + \sum_{g\ne g^0_{it}} \left( \frac{\partial \tau_{itg}}{\partial \tau_{itg^{0}_{it}}}  (\log\tau_{itg}+ 1)\right)
+\end{align*}
+where $\frac{\partial \tau_{itg}}{\partial \tau_{itg^{0}_{it}}}$ corresponds to the marginal change in the $g^{th}$ posterior probability caused by a marginal change in $\tau_{itg^{0}_{it}}$. This partial derivative might equal zero for some $g$, but not for all since the addition of all posterior responsibilities always equal unity. Consequently, we know that $\sum_{g\ne g^0_{it}} \frac{\partial \tau_{itg}}{\partial \tau_{itg^{0}_{it}}} = -1$ as a result of this unit constraint. 
+\par
+When $\tau_{itg^{0}_{it}} = \tau_{itg} = 1/G$, the expression of the derivative reduces to~:
+\begin{align*}
+\frac{\partial b(\tau_{itg^{0}_{it}})}{\partial \tau_{itg^0_{it}}} &= 1 - G + \log \frac{1}{G} + (\log \frac{1}{G} + 1)\sum_{g\ne g^0_{it}} \left( \frac{\partial \tau_{itg}}{\partial \tau_{itg^{0}_{it}}}  \right),\\
+\frac{\partial b(\tau_{itg^{0}_{it}})}{\partial \tau_{itg^0_{it}}} &= 1 - G + \log \frac{1}{G} - (\log \frac{1}{G} + 1),\\
+\frac{\partial b(\tau_{itg^{0}_{it}})}{\partial \tau_{itg^0_{it}}} &= -G.
+\end{align*}
+Hence, the derivative of the bias with respect to $\tau_{itg^{0}_{it}}$ is negative and increases in absolute value with the number of components when $\tau_{itg^{0}_{it}} = \tau_{itg} = 1/G$. On the other hand, one can easily note that the same derivative yields a value of $\infty$ when $\tau_{itg^{0}_{it}}=1$, given that $-\infty \times \sum_{g\ne g^0_{it}} \frac{\partial \tau_{itg}}{\partial \tau_{itg^{0}_{it}}} = +\infty$.
+\par
+Putting everything together, we know that the bias function $b(\tau_{itg^0_{it}})$ is equal to zero only when $\tau_{itg^0_{it}} = 1/G$ (excluding the limit cases where $\tau_{itg} = \{0,1\}$), and that its derivative with respect to $\tau_{itg^0_{it}}$ is equal to $-G$ when $\tau_{itg^0_{it}} = 1/G$, while being equal to $+\infty$ when $\tau_{itg^0_{it}} = 1$. This implies that $b(\tau_{itg^0_{it}})$ is a convex function taking negative values when $\tau_{itg^0_{it}} \in (1/G,1)$, and taking positive values when $\tau_{itg^0_{it}} \in (0,1/G)$. It is also worth noting that $b(\tau_{itg^0_{it}}) = +\infty$ when $\tau_{itg^0_{it}}=0$. Hence, we have that~:
+\begin{align*}
+\sum_{g=1}^G \tau_{itg} \log \tau_{itg}  < \log \tau_{itg^{0}_{it}} \ \Leftrightarrow \ \tau_{itg^0_{it}} =  \tau_{itg} + \epsilon, \ \forall g \ne g^0_{it},
+\end{align*}
+for $\epsilon >0$ arbitrarily close to zero. This is an equivalence because the function $b(\tau_{itg^0_{it}})$ is a bijection with respect to $\tau_{itg^0_{it}}$ when other posterior responsibilities are all lower or all higher than $\tau_{itg^0_{it}}$, which is depicted in Figure \ref{fig:1}. The inverse similar logic applies to an infinitesimal negative change in $\tau_{itg^0_{it}}$, thus giving~:
+\begin{align*}
+\sum_{g=1}^G \tau_{itg} \log \tau_{itg}  > \log \tau_{itg^{0}_{it}} \ \Leftrightarrow \ \tau_{itg^0_{it}} =  \tau_{itg} - \epsilon, \ \forall g \ne g^0_{it}.\\
+\square
+\end{align*}
+\par
+The fact that the derivative of the bias function is equal to $-G$ when all posterior probabilities are equal to $1/G$ confirms the idea, formulated in the heuristic example, that the bias of the EM algorithm increases as the number of component $G$ increases.
+\par
+One case of interest is when $\frac{\partial \tau_{itg}}{\partial \tau_{itg^{0}_{it}}} = \frac{-1}{G-1}, \ \forall g \ne g^{0}_{it}$, which is when the impact of a marginal increase in $\tau_{itg^{0}_{it}}$ is similar across the other posterior probabilities, so that $\tau_{itg} = \tau_{it} = \frac{1-\tau_{itg^{0}_{it}}}{G-1}$. This is also the most "plausible" setup. In this case, we have that the above derivative reduces to~:
+\begin{align*}
+\frac{\partial b(\tau_{itg^{0}_{it}})}{\partial \tau_{itg^0_{it}}} &= 1 - \frac{1}{\tau_{itg^{0}_{it}}} + \log \tau_{itg^{0}_{it}} - \sum_{g\ne g^0_{it}}  \frac{\log\tau_{itg}+ 1}{G-1},\\
+\frac{\partial b(\tau_{itg^{0}_{it}})}{\partial \tau_{itg^0_{it}}} &= \log \frac{\tau_{itg^{0}_{it}}}{\tau_{it}}  - \frac{1}{\tau_{itg^{0}_{it}}}.
+\end{align*}
+In this case, the derivative is equal to zero when $\tau_{itg^{0}_{it}} = \tilde{\tau}_{itg} = \tau_{it}\exp(1/\tau_{itg^{0}_{it}})$, and this corresponds to the minimum of the bias function. It can also be shown that, in this specific case, the second derivative of the bias function corresponds to the following~:
+\begin{align*}
+\frac{\partial^2 b(\tau_{itg^{0}_{it}})}{\partial{\tau_{itg^0_{it}}}^2} = \frac{1}{(\tau_{itg^0_{it}})^2(1-\tau_{itg^0_{it}})} > 0,
+\end{align*}
+which also proves the convexity of the function with respect to $\tau_{itg^0_{it}}$ in this specific case. When $\tau_{itg^0_{it}} > \tilde{\tau}_{itg} = \tau_{it} \exp(1/\tau_{itg^0_{it}})$, the derivative $\frac{\partial b(\tau_{itg^{0}_{it}})}{\partial \tau_{itg^0_{it}}}$ is positive and, according to implication (\ref{eqn:16}), the bias of the conditional expectation of the complete-data log likelihood decreases. Figure \ref{fig:1}, on the next page, shows a graph of the function $b(\tau_{itg^{0}_{it}})$ when $G=4$ for the specific case considered here, implying that $\tilde{\tau}_{itg} \approx 0.624$. This means that, for a finite mixture of 4 components and with $\tau_{itg^0_{it}}>0.25$, the bias of the conditional expectation of the complete-data log likelihood reduces with $\tau_{itg^0_{it}}$ only when it is higher than $0.624$. Such threshold values only depend on the number of component in the mixture and are shown in Table 1 below for $G=2$ to $G=10$ when $\tau_{it} = \frac{1-\tau_{itg^0_{it}}}{G-1}$. The last column of Table 1 shows the absolute difference between the threshold value and $1/G$, which corresponds to the expected initial posterior probability associated with $g_{it}^0$ if initialization is random. One can see that it is at its highest level when $G=6$ and that it slowly decreases after.\\
+\begin{figure}[h!]\label{fig:1}
+	\centering
+	\begin{tikzpicture}[domain=1.2:7.99] 
+	%\draw[very thin,color=gray] (0,-1.2) grid (8,4);
+	\draw[->] (0,0) node[below]{0} -- (8.3,0) node[right] {$\tau_{itg^{0}_{it}}$}; 
+	\draw[->] (0,-4) -- (0,4.3) node[above] {$b(\tau_{itg^{0}_{it}})$};
+	\draw[color=black]    plot (\x,{(8-\x)*(ln(8-\x)-ln(3*\x))}) node[below]{1} ;
+	\filldraw[black] (2,0) circle (2pt) node at (3.5,0.25) {$\tau_{itg} = \tau_{itg^0_{it}}= 1/G$};
+	\draw[black] (8,0) circle (2pt);
+	\filldraw[black] (5,-4.81) circle (2pt) node at (5,-4.5) {$\tilde{\tau}_{itg}$};
+	\end{tikzpicture}
+	\caption{Graph of the function $b(\tau_{itg^{0}_{it}})$ for $G=4$ when $\tau_{itg}= \tau_{it} = \frac{1-\tau_{itg^0_{it}}}{G-1}$ }
+\end{figure}
+\begin{table}[h!]
+	\centering
+	\begin{tabular}{||c |c |c||} 
+		\hline
+		Number of component & Threshold $\tilde{\tau}_{itg}$ & Difference with 1/G \\ [0.5ex] 
+		\hline\hline
+		2 & 0.782 &0.282\\
+		3 & 0.683 &0.350\\
+		4 & 0.624 &0.374\\
+		5 & 0.582 &0.382\\ 
+		6 & 0.551 &0.384\\ 
+		7 & 0.527 &0.384\\
+		8 & 0.507 &0.382\\
+		9 & 0.490 &0.379\\
+		10 & 0.476 &0.376\\[1ex]
+		\hline
+	\end{tabular}
+\caption{Approximate threshold values $\tilde{\tau}_{itg}$ as a function of $G$}
+\end{table}
+\newpage
+\end{document}
